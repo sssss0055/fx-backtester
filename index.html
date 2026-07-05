@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FX 過去検証トレーナー v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">FX <span>▲</span> 過去検証トレーナー <small style="color:var(--muted);font-size:11px">v2</small></div>
+  <div class="pair-badge" id="pairBadge">--- · --</div>
+  <div class="candle-count" id="candleCount">Bar 0 / 0</div>
+  <div class="price-tape" id="priceTape">---.---</div>
+</header>
+
+<div class="tabs">
+  <button class="tab on" data-view="manual">🎮 手動検証</button>
+  <button class="tab" data-view="auto">⚙️ 自動検証</button>
+</div>
+
+<!-- ================= 手動検証 ================= -->
+<div id="view-manual">
+  <div class="grid">
+    <div class="panel">
+      <div class="chart-toolbar">
+        <button class="btn-next" id="mBtnNext">次の足へ ▶ <kbd>Space</kbd></button>
+        <button class="btn-ghost" id="mBtnSkip5">+5本</button>
+        <button class="btn-ghost" id="mBtnSkip20">+20本</button>
+        <span style="flex:1"></span>
+        <button class="btn-ghost on" id="mBtnSma20">SMA20</button>
+        <button class="btn-ghost" id="mBtnSma50">SMA50</button>
+        <button class="btn-ghost" id="mBtnNew">🔄 新しいチャート</button>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="mChart" class="main-chart"></canvas>
+        <div class="float-pnl" id="mFloatPnl">
+          <div id="mFpDir"></div>
+          <div class="big" id="mFpPips">0.0 pips</div>
+          <div id="mFpYen">¥0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div class="panel">
+        <h2>トレード操作</h2>
+        <div class="trade-body">
+          <div class="row">
+            <div class="field"><label>ロット(万通貨)</label>
+              <input type="number" id="mLot" value="1" min="0.1" step="0.1"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>損切り(pips)</label>
+              <input type="number" id="mSl" value="20" min="0" step="1"></div>
+            <div class="field"><label>利確(pips)</label>
+              <input type="number" id="mTp" value="40" min="0" step="1"></div>
+          </div>
+          <div class="row">
+            <button class="btn-buy" id="mBtnBuy">買い <kbd>B</kbd></button>
+            <button class="btn-sell" id="mBtnSell">売り <kbd>S</kbd></button>
+          </div>
+          <button class="btn-close" id="mBtnClose" disabled>ポジション決済 <kbd>C</kbd></button>
+          <div class="pos-card" id="mPosCard">
+            <div><span class="dir" id="mPcDir"></span>  <span id="mPcLot"></span></div>
+            <div>エントリー <span id="mPcEntry"></span></div>
+            <div>SL <span id="mPcSl"></span> / TP <span id="mPcTp"></span></div>
+          </div>
+          <div class="hint">SL/TPが0の場合は設定されません。新しい足でSL/TPに到達すると自動決済されます。</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>成績</h2>
+        <div class="stats-grid" id="mStats"></div>
+        <canvas id="mEquity" class="equity"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>トレード履歴</h2>
+        <div class="history-wrap">
+          <table>
+            <thead><tr><th>方向</th><th>IN</th><th>OUT</th><th>pips</th><th>損益</th></tr></thead>
+            <tbody id="mHistBody"></tbody>
+          </table>
+          <div class="empty" id="mHistEmpty">まだトレードがありません。<br>「次の足へ」でチャートを進め、タイミングを見て売買しましょう。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 自動検証 ================= -->
+<div id="view-auto" style="display:none">
+  <div class="grid">
+    <div class="panel">
+      <div class="chart-toolbar">
+        <span class="run-info" id="aRunInfo">未実行</span>
+        <span style="flex:1"></span>
+        <button class="btn-ghost" id="aZoomIn">＋拡大</button>
+        <button class="btn-ghost" id="aZoomOut">－縮小</button>
+        <button class="btn-ghost" id="aZoomAll">全体表示</button>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="aChart" class="main-chart"></canvas>
+      </div>
+      <div class="chart-footer">
+        <input type="range" id="aScroll" min="0" max="0" value="0" aria-label="チャートスクロール">
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div class="panel">
+        <h2>ストラテジー設定</h2>
+        <div class="trade-body">
+          <div class="field">
+            <label>戦略</label>
+            <select id="aStrategy"></select>
+          </div>
+          <div class="strat-desc" id="aStratDesc"></div>
+          <div class="params-grid" id="aParams"></div>
+          <div class="params-grid">
+            <div class="field"><label>損切り(pips / 0=なし)</label>
+              <input type="number" id="aSl" value="30" min="0" step="1"></div>
+            <div class="field"><label>利確(pips / 0=なし)</label>
+              <input type="number" id="aTp" value="60" min="0" step="1"></div>
+            <div class="field"><label>ロット(万通貨)</label>
+              <input type="number" id="aLot" value="1" min="0.1" step="0.1"></div>
+            <div class="field"><label>スプレッド(pips)</label>
+              <input type="number" id="aSpread" value="0.3" min="0" step="0.1"></div>
+          </div>
+          <button class="btn-run" id="aBtnRun">▶ バックテスト実行</button>
+          <div class="row">
+            <div class="field"><label>シード(空欄=ランダム)</label>
+              <input type="text" id="aSeed" placeholder="再現用シード値"></div>
+          </div>
+          <button class="btn-ghost" id="aBtnNewData">🔄 新データ生成</button>
+          <div class="hint">同じシード値で同じチャートを再現できます。戦略やパラメータを変えて同一データで比較しましょう。</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>検証結果</h2>
+        <div class="stats-grid" id="aStats"></div>
+        <canvas id="aEquity" class="equity"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>トレード履歴</h2>
+        <div class="history-wrap">
+          <table>
+            <thead><tr><th>方向</th><th>IN</th><th>OUT</th><th>pips</th><th>損益</th><th>理由</th></tr></thead>
+            <tbody id="aHistBody"></tbody>
+          </table>
+          <div class="empty" id="aHistEmpty">「バックテスト実行」で戦略を全データに適用し、<br>結果がここに表示されます。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="js/data.js"></script>
+<script src="js/strategies.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
