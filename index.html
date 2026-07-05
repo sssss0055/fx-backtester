@@ -14,6 +14,18 @@
   <div class="logo">FX <span>▲</span> 過去検証トレーナー <small style="color:var(--muted);font-size:11px">v2</small></div>
   <div class="pair-badge" id="pairBadge">--- · --</div>
   <div class="candle-count" id="candleCount">Bar 0 / 0</div>
+  <span style="flex:1"></span>
+  <input type="file" id="csvFile" accept=".csv,.txt" style="display:none">
+  <select id="csvTf" title="表示時間足" style="display:none">
+    <option value="1">1分足</option>
+    <option value="5">5分足</option>
+    <option value="15" selected>15分足</option>
+    <option value="60">1時間足</option>
+    <option value="240">4時間足</option>
+    <option value="1440">日足</option>
+  </select>
+  <button class="btn-ghost" id="btnClearData" style="display:none" title="合成データに戻す">✕ 実データ解除</button>
+  <button class="btn-ghost" id="btnImport" title="HistData ASCII / 汎用OHLC形式のCSVを読み込む">📂 実データCSV</button>
   <div class="price-tape" id="priceTape">---.---</div>
 </header>
 
@@ -33,6 +45,15 @@
         <span style="flex:1"></span>
         <button class="btn-ghost on" id="mBtnSma20">SMA20</button>
         <button class="btn-ghost" id="mBtnSma50">SMA50</button>
+        <button class="btn-ghost" id="mBtnEma20">EMA20</button>
+        <button class="btn-ghost" id="mBtnEma75">EMA75</button>
+        <button class="btn-ghost" id="mBtnEma200">EMA200</button>
+        <span class="tool-sep"></span>
+        <button class="btn-ghost" id="mBtnToolH" title="クリックした価格に水平線を引く">─ 水平線</button>
+        <button class="btn-ghost" id="mBtnToolT" title="2点クリックでトレンドライン(右へ延長)">╱ ライン</button>
+        <button class="btn-ghost" id="mBtnUndoDraw" title="最後の描画を削除">↩</button>
+        <button class="btn-ghost" id="mBtnClearDraw" title="描画を全て削除">🗑</button>
+        <span class="tool-sep"></span>
         <button class="btn-ghost" id="mBtnNew">🔄 新しいチャート</button>
       </div>
       <div class="chart-wrap">

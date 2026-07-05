@@ -65,5 +65,65 @@ FX.data = (() => {
 
   const randomSeed = () => Math.floor(Math.random() * 1e9);
 
-  return { PAIRS, TFS, generate, randomSeed };
+  /* ---------- 実データCSVインポート ----------
+   * 対応形式(1行=1本、ヘッダー行は自動スキップ):
+   *  HistData ASCII : 20230101 170000;130.925;130.925;130.910;130.921;0
+   *  汎用CSV        : 2023-01-01 17:00,130.925,130.925,130.910,130.921[,vol]
+   */
+  function parseTime(s) {
+    s = s.trim();
+    let m = s.match(/^(\d{4})(\d{2})(\d{2})[ T]?(\d{2})(\d{2})(\d{2})?$/);
+    if (!m) m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[ T]?(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!m) return null;
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] || 0, +m[5] || 0, +m[6] || 0);
+  }
+
+  function parseCsv(text) {
+    const candles = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line) continue;
+      const f = line.split(line.includes(';') ? ';' : ',');
+      if (f.length < 5) continue;
+      const t = parseTime(f[0]);
+      if (t == null) continue; // ヘッダー行・不正行はスキップ
+      const o = parseFloat(f[1]), h = parseFloat(f[2]), l = parseFloat(f[3]), c = parseFloat(f[4]);
+      if (!isFinite(o) || !isFinite(h) || !isFinite(l) || !isFinite(c)) continue;
+      candles.push({ t, o, h, l, c });
+    }
+    candles.sort((a, b) => a.t - b.t);
+    return candles;
+  }
+
+  /** 分足を上位足に集約する(minutes = 5 / 15 / 60 / 240 / 1440 等) */
+  function resample(candles, minutes) {
+    if (!minutes || minutes <= 1) return candles;
+    const ms = minutes * 60000;
+    const out = [];
+    let cur = null, bucket = null;
+    for (const b of candles) {
+      const k = Math.floor(b.t / ms);
+      if (k !== bucket) {
+        if (cur) out.push(cur);
+        bucket = k;
+        cur = { t: k * ms, o: b.o, h: b.h, l: b.l, c: b.c };
+      } else {
+        if (b.h > cur.h) cur.h = b.h;
+        if (b.l < cur.l) cur.l = b.l;
+        cur.c = b.c;
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  /** インポートした足からデータセットを作る(pipは価格帯から推定) */
+  function fromCandles(candles, name, tf) {
+    const mid = candles.length ? candles[Math.floor(candles.length / 2)].c : 100;
+    const pair = mid > 20
+      ? { name, base: mid, pip: 0.01, dec: 3 }
+      : { name, base: mid, pip: 0.0001, dec: 5 };
+    return { pair, tf, seed: null, candles };
+  }
+
+  return { PAIRS, TFS, generate, randomSeed, parseCsv, resample, fromCandles };
 })();

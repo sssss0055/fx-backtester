@@ -100,9 +100,12 @@ console.log('trades:', r.trades.length, 'stats:', r.stats);
 - [x] 成績統計(勝率 / PF / RR / 期待値 / 最大DD)+ 売買マーカー表示
 - [x] シード指定によるデータ再現
 
-### Phase 2: 実データ・分析強化(次にやること)
-- [ ] CSVインポート(MT4/MT5・ヒストリカルデータ形式)→ `data.js` に loader 追加
-- [ ] インジケーター追加(EMA / ボリンジャーバンド / MACD / ATR)
+### Phase 2: 実データ・分析強化(進行中)
+- [x] CSVインポート(HistData ASCII / 汎用OHLC形式。`data.js` の parseCsv / resample / fromCandles)
+- [x] 時間足変換(M1→M5/M15/H1/H4/D1。ヘッダーの時間足セレクタ)
+- [x] EMA(engine.js の ctx.ema、手動モードに EMA20/75/200 トグル)
+- [x] ライン描画(手動モード: 水平線 / トレンドライン(右延長レイ)、戻す / 全消去。chart.js の drawings と priceAt/indexAt)
+- [ ] インジケーター追加(ボリンジャーバンド / MACD / ATR)
 - [ ] ATRベースのSL/TP、トレーリングストップ
 - [ ] パラメータ最適化(グリッドサーチ + 結果ヒートマップ)
 - [ ] 検証結果のlocalStorage保存・比較 / CSVエクスポート

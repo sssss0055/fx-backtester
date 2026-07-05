@@ -60,6 +60,8 @@ FX.chart = (() => {
       const Y = p => padT + (hi - p) / (hi - lo) * (h - padT - padB);
       const cw = Math.max(1.5, (w - padR) / n * 0.62);
       const fmt = v => v.toFixed(pair.dec);
+      // 直近の座標変換を保存(クリック位置→価格/バー番号の逆変換用)
+      this.t = { start, end, n, hi, lo, w, h, padR, padT, padB };
 
       // グリッド + 価格軸
       ctx.font = '10px IBM Plex Mono, monospace';
@@ -72,14 +74,14 @@ FX.chart = (() => {
         ctx.fillText(fmt(p), w - padR + 8, y + 3);
       }
 
-      // SMA
+      // 移動平均(SMA / EMA は kind で指定)
       if (o.smaCtx && o.smas) {
         for (const s of o.smas) {
           ctx.strokeStyle = s.color; ctx.lineWidth = 1.4;
           ctx.beginPath();
           let started = false;
           for (let i = start; i < end; i++) {
-            const v = o.smaCtx.sma(s.period, i);
+            const v = s.kind === 'ema' ? o.smaCtx.ema(s.period, i) : o.smaCtx.sma(s.period, i);
             if (v == null) continue;
             const x = X(i), y = Y(v);
             if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
@@ -145,6 +147,47 @@ FX.chart = (() => {
         ctx.fillStyle = C.bg;
         ctx.fillText(fmt(o.lastPrice), w - padR + 4, yc + 3);
       }
+
+      // ユーザー描画(水平線・トレンドライン)。トレンドラインは2点目から先へ延長(レイ)
+      const drawObj = (d, preview) => {
+        ctx.strokeStyle = d.color || C.amber;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash(preview ? [4, 4] : []);
+        ctx.beginPath();
+        if (d.type === 'h') {
+          const y = Y(d.price);
+          ctx.moveTo(0, y); ctx.lineTo(w - padR, y);
+        } else if (d.type === 't') {
+          const x1 = X(d.i1), y1 = Y(d.p1);
+          const x2 = X(d.i2), y2 = Y(d.p2);
+          ctx.moveTo(x1, y1);
+          if (Math.abs(x2 - x1) > 0.5) {
+            const slope = (y2 - y1) / (x2 - x1);
+            const xe = x2 >= x1 ? w - padR : 0;
+            ctx.lineTo(xe, y1 + slope * (xe - x1));
+          } else {
+            ctx.lineTo(x2, y2);
+          }
+        }
+        ctx.stroke();
+        ctx.setLineDash([]); ctx.lineWidth = 1;
+      };
+      (o.drawings || []).forEach(d => drawObj(d, false));
+      if (o.preview) drawObj(o.preview, true);
+    }
+
+    /** キャンバスY座標→価格(直近のdraw基準) */
+    priceAt(y) {
+      const t = this.t;
+      if (!t) return null;
+      return t.hi - (y - t.padT) / (t.h - t.padT - t.padB) * (t.hi - t.lo);
+    }
+
+    /** キャンバスX座標→バー番号(直近のdraw基準) */
+    indexAt(x) {
+      const t = this.t;
+      if (!t) return null;
+      return Math.round(t.start + (x / (t.w - t.padR)) * t.n - 0.5);
     }
 
     _triangle(x, y, dir, color) {

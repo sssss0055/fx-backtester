@@ -55,6 +55,10 @@
     tbody.innerHTML = html;
   }
 
+  /* ---------- 実データ(CSVインポート)の共有状態 ---------- */
+  let importedRaw = null; // {candles(分足など元の粒度), name}
+  let imported = null;    // 表示時間足に変換済みのデータセット
+
   /* ---------- タブ切替 ---------- */
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -75,14 +79,25 @@
     let equity = [START_BAL], peak = START_BAL, maxDD = 0;
     let sctx; // インジケーターコンテキスト
     let showSma20 = true, showSma50 = false;
+    let showEma20 = false, showEma75 = false, showEma200 = false;
+    let drawings = [], tool = null, pendingPt = null, previewPt = null;
 
     const curPrice = () => ds.candles[cursor - 1].c;
 
     function newSession(keepStats) {
-      ds = data.generate(data.randomSeed(), 800);
+      if (imported) {
+        // 実データ: ランダムな位置から練習用の窓を切り出す(未来を知らない状態で開始)
+        const total = imported.candles.length;
+        const len = Math.min(800, total);
+        const off = Math.floor(Math.random() * Math.max(1, total - len + 1));
+        ds = { pair: imported.pair, tf: imported.tf, seed: null, candles: imported.candles.slice(off, off + len) };
+      } else {
+        ds = data.generate(data.randomSeed(), 800);
+      }
       sctx = engine.createContext(ds.candles);
-      cursor = START_VISIBLE;
+      cursor = Math.min(START_VISIBLE, ds.candles.length);
       position = null;
+      drawings = []; pendingPt = null; previewPt = null;
       if (!keepStats) {
         trades = []; balance = START_BAL; equity = [START_BAL]; peak = START_BAL; maxDD = 0;
       }
@@ -186,12 +201,55 @@
       const smas = [];
       if (showSma20) smas.push({ period: 20, color: 'rgba(92,168,255,.8)' });
       if (showSma50) smas.push({ period: 50, color: 'rgba(245,181,74,.8)' });
+      if (showEma20) smas.push({ period: 20, color: 'rgba(45,212,167,.9)', kind: 'ema' });
+      if (showEma75) smas.push({ period: 75, color: 'rgba(240,89,106,.9)', kind: 'ema' });
+      if (showEma200) smas.push({ period: 200, color: 'rgba(230,237,243,.7)', kind: 'ema' });
+      const preview = (tool === 't' && pendingPt && previewPt)
+        ? { type: 't', i1: pendingPt.i, p1: pendingPt.p, i2: previewPt.i, p2: previewPt.p }
+        : null;
       cchart.draw({
         candles: ds.candles, pair: ds.pair,
         start: Math.max(0, cursor - VIEW_BARS), end: cursor,
         smaCtx: sctx, smas, hlines, lastPrice: curPrice(),
+        drawings, preview,
       });
     }
+
+    /* ---------- ライン描画ツール ---------- */
+    const mCv = $('mChart');
+
+    function setTool(t) {
+      tool = tool === t ? null : t;
+      pendingPt = null; previewPt = null;
+      $('mBtnToolH').classList.toggle('on', tool === 'h');
+      $('mBtnToolT').classList.toggle('on', tool === 't');
+      mCv.style.cursor = tool ? 'crosshair' : '';
+      redraw();
+    }
+
+    mCv.addEventListener('click', e => {
+      if (!tool) return;
+      const r = mCv.getBoundingClientRect();
+      const price = cchart.priceAt(e.clientY - r.top);
+      const idx = cchart.indexAt(e.clientX - r.left);
+      if (price == null || idx == null) return;
+      if (tool === 'h') {
+        drawings.push({ type: 'h', price });
+      } else if (!pendingPt) {
+        pendingPt = { i: idx, p: price };
+      } else {
+        drawings.push({ type: 't', i1: pendingPt.i, p1: pendingPt.p, i2: idx, p2: price });
+        pendingPt = null; previewPt = null;
+      }
+      redraw();
+    });
+
+    mCv.addEventListener('mousemove', e => {
+      if (tool !== 't' || !pendingPt) return;
+      const r = mCv.getBoundingClientRect();
+      previewPt = { i: cchart.indexAt(e.clientX - r.left), p: cchart.priceAt(e.clientY - r.top) };
+      redraw();
+    });
 
     /* events */
     $('mBtnNext').onclick = () => advance(1);
@@ -206,6 +264,13 @@
     };
     $('mBtnSma20').onclick = e => { showSma20 = !showSma20; e.target.classList.toggle('on', showSma20); redraw(); };
     $('mBtnSma50').onclick = e => { showSma50 = !showSma50; e.target.classList.toggle('on', showSma50); redraw(); };
+    $('mBtnEma20').onclick = e => { showEma20 = !showEma20; e.target.classList.toggle('on', showEma20); redraw(); };
+    $('mBtnEma75').onclick = e => { showEma75 = !showEma75; e.target.classList.toggle('on', showEma75); redraw(); };
+    $('mBtnEma200').onclick = e => { showEma200 = !showEma200; e.target.classList.toggle('on', showEma200); redraw(); };
+    $('mBtnToolH').onclick = () => setTool('h');
+    $('mBtnToolT').onclick = () => setTool('t');
+    $('mBtnUndoDraw').onclick = () => { drawings.pop(); pendingPt = null; previewPt = null; redraw(); };
+    $('mBtnClearDraw').onclick = () => { drawings = []; pendingPt = null; previewPt = null; redraw(); };
 
     document.addEventListener('keydown', e => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -214,10 +279,11 @@
       else if (e.key === 'b' || e.key === 'B') openPos(1);
       else if (e.key === 's' || e.key === 'S') openPos(-1);
       else if ((e.key === 'c' || e.key === 'C') && position) closePos(curPrice(), '手動決済');
+      else if (e.key === 'Escape' && tool) setTool(tool); // ツール解除
     });
 
     newSession(false);
-    return { redraw };
+    return { redraw, reload: () => newSession(false) };
   })();
 
   /* =====================================================
@@ -280,20 +346,25 @@
       renderHistory($('aHistBody'), $('aHistEmpty'), result.trades, ds.pair, true);
       chart.drawEquity($('aEquity'), result.equity, START_BAL);
       $('aRunInfo').textContent =
-        `${ds.pair.name} ${ds.tf} · ${ds.candles.length}本 · seed:${ds.seed} · ${result.trades.length}回 · ${ms}ms`;
+        `${ds.pair.name} ${ds.tf} · ${ds.candles.length.toLocaleString()}本 · ${ds.seed == null ? '実データ' : 'seed:' + ds.seed} · ${result.trades.length}回 · ${ms}ms`;
       redraw();
       toast(`検証完了: ${result.trades.length}トレード / 総損益 ${fmtYen(result.stats.pnl)}`);
     }
 
     function newData() {
-      const seedInput = $('aSeed').value.trim();
-      const seed = seedInput ? (parseInt(seedInput, 10) >>> 0) : data.randomSeed();
-      ds = data.generate(seed, 1500);
+      if (imported) {
+        // 実データ使用中は全期間をそのまま検証対象にする
+        ds = { pair: imported.pair, tf: imported.tf, seed: null, candles: imported.candles };
+      } else {
+        const seedInput = $('aSeed').value.trim();
+        const seed = seedInput ? (parseInt(seedInput, 10) >>> 0) : data.randomSeed();
+        ds = data.generate(seed, 1500);
+        $('aSeed').value = '';
+        $('aSeed').placeholder = 'seed: ' + seed;
+      }
       sctx = engine.createContext(ds.candles);
       result = null;
-      $('aSeed').value = '';
-      $('aSeed').placeholder = 'seed: ' + seed;
-      $('aRunInfo').textContent = `${ds.pair.name} ${ds.tf} · ${ds.candles.length}本 · seed:${seed} · 未実行`;
+      $('aRunInfo').textContent = `${ds.pair.name} ${ds.tf} · ${ds.candles.length.toLocaleString()}本 · ${ds.seed == null ? '実データ' : 'seed:' + ds.seed} · 未実行`;
       $('aStats').innerHTML = '';
       $('aHistBody').innerHTML = '';
       $('aHistEmpty').style.display = 'block';
@@ -301,7 +372,7 @@
       viewStart = 0;
       syncScroll();
       redraw();
-      toast('新データ: ' + ds.pair.name + ' ' + ds.tf + ' (seed: ' + seed + ')');
+      toast('データ切替: ' + ds.pair.name + ' ' + ds.tf + ' (' + ds.candles.length.toLocaleString() + '本)');
     }
 
     function syncScroll() {
@@ -340,7 +411,61 @@
     buildParamInputs();
     $('aRunInfo').textContent = `${ds.pair.name} ${ds.tf} · ${ds.candles.length}本 · seed:${ds.seed} · 未実行`;
     syncScroll();
-    return { redraw };
+    return { redraw, reload: newData };
+  })();
+
+  /* =====================================================
+   * 実データCSVインポート(ヘッダーのボタン群)
+   * ===================================================== */
+  (() => {
+    const TF_LABEL = { 1: 'M1', 5: 'M5', 15: 'M15', 60: 'H1', 240: 'H4', 1440: 'D1' };
+    const MAX_BARS = 50000; // 描画・検証の応答性を保つ上限(超過分は新しい方を優先)
+
+    function applyImport() {
+      if (!importedRaw) return;
+      const mins = parseInt($('csvTf').value, 10);
+      let cds = FX.data.resample(importedRaw.candles, mins);
+      if (cds.length > MAX_BARS) cds = cds.slice(-MAX_BARS);
+      imported = FX.data.fromCandles(cds, importedRaw.name, TF_LABEL[mins]);
+      $('csvTf').style.display = '';
+      $('btnClearData').style.display = '';
+      M.reload();
+      A.reload();
+      toast(`実データ読込: ${imported.pair.name} ${imported.tf} · ${cds.length.toLocaleString()}本`);
+    }
+
+    $('btnImport').onclick = () => $('csvFile').click();
+
+    $('csvFile').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const candles = FX.data.parseCsv(reader.result);
+        if (candles.length < 100) {
+          toast('CSVを解析できませんでした(対応: HistData ASCII / 日時,O,H,L,C 形式)');
+          return;
+        }
+        const m = file.name.match(/[A-Za-z]{6}/);
+        const name = m ? m[0].toUpperCase().replace(/^(.{3})/, '$1/') : file.name.replace(/\.[^.]*$/, '');
+        importedRaw = { candles, name };
+        applyImport();
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    $('csvTf').onchange = applyImport;
+
+    $('btnClearData').onclick = () => {
+      importedRaw = null;
+      imported = null;
+      $('csvTf').style.display = 'none';
+      $('btnClearData').style.display = 'none';
+      M.reload();
+      A.reload();
+      toast('合成データに戻しました');
+    };
   })();
 
   window.addEventListener('resize', () => { M.redraw(); A.redraw(); });

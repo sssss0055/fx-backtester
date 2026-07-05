@@ -37,6 +37,20 @@ FX.engine = (() => {
       return out;
     });
 
+    const emaArr = (p) => memo('ema' + p, () => {
+      const out = new Array(candles.length).fill(null);
+      const k = 2 / (p + 1);
+      let e = null, s = 0;
+      for (let i = 0; i < candles.length; i++) {
+        const c = candles[i].c;
+        if (i < p - 1) { s += c; continue; }
+        if (i === p - 1) { s += c; e = s / p; }
+        else e = c * k + e * (1 - k);
+        out[i] = e;
+      }
+      return out;
+    });
+
     const rsiArr = (p) => memo('rsi' + p, () => {
       const out = new Array(candles.length).fill(null);
       let ag = 0, al = 0;
@@ -80,6 +94,7 @@ FX.engine = (() => {
     return {
       candles,
       sma:     (p, i) => at(smaArr(p), i),
+      ema:     (p, i) => at(emaArr(p), i),
       rsi:     (p, i) => at(rsiArr(p), i),
       highest: (p, i) => at(hhArr(p), i),
       lowest:  (p, i) => at(llArr(p), i),
